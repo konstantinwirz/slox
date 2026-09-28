@@ -24,13 +24,31 @@ public class Interpreter {
         try evalExpr(parser.parseExpr())
     }
 
+    public func run() throws {
+        while let stmt = try parser.parse() {
+            try execute(stmt)
+        }
+    }
+
+    private func execute(_ stmt: Stmt) throws(InterpretError) {
+        switch stmt {
+        case .print(let expr, _):
+            print(try evalExpr(expr))
+        case .expr(let expr, _):
+            try _ = evalExpr(expr)  // side-effect
+        default:
+            break
+        }
+    }
+
     private func evalExpr(_ expr: Expr) throws(InterpretError) -> LoxValue {
         switch expr {
-        case .literal(let value, _): value
-        case .grouping(let expr, _): try evalExpr(expr)
-        case .unary(let op, let right, _): try evalUnaryExpr(op: op, expr: right)
-        case .binary(let left, let op, let right, _):
+        case .literal(let value): value
+        case .grouping(let expr): try evalExpr(expr)
+        case .unary(let op, let right): try evalUnaryExpr(op: op, expr: right)
+        case .binary(let left, let op, let right):
             try evalBinaryExpr(left: left, op: op, right: right)
+        default: .nil
         }
     }
 

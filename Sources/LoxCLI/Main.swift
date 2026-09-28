@@ -1,5 +1,5 @@
-import Foundation
 import ArgumentParser
+import Foundation
 import Lox
 
 enum CliAction: String, CaseIterable, ExpressibleByArgument {
@@ -35,8 +35,9 @@ struct SLox: ParsableCommand {
                 case let a: a.description
                 }
             print(result)
-        default:
-            print("Action \(action) is not implemented yet.")
+        case .run:
+            let interpreter = Interpreter(source: fileContent)
+            try interpreter.run()
         }
     }
 

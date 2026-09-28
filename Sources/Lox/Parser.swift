@@ -1,31 +1,3 @@
-public enum Expr: CustomStringConvertible {
-    case literal(LoxValue, line: Int)
-    indirect case grouping(Expr, line: Int)
-    indirect case unary(op: Token, right: Expr, line: Int)
-    indirect case binary(left: Expr, op: Token, right: Expr, line: Int)
-
-    public var description: String {
-        switch self {
-        case .literal(let literal, _):
-            return literal.description
-        case .grouping(let expr, _):
-            return "(group \(expr))"
-        case .unary(let op, let right, _):
-            return "(\(op.lexeme) \(right))"
-        case .binary(let left, let op, let right, _):
-            return "(\(op.lexeme) \(left) \(right))"
-        }
-    }
-
-    public var line: Int {
-        switch self {
-        case .literal(_, let line): line
-        case .grouping(_, let line): line
-        case .unary(_, _, let line): line
-        case .binary(_, _, _, let line): line
-        }
-    }
-}
 
 public struct ParseError: Error, CustomStringConvertible {
     public let message: String
@@ -50,8 +22,71 @@ public class Parser {
         self.scanner = Scanner(source: source)
     }
 
+
+    // program        → declaration* EOF ;
+    //
+    // declaration    → varDecl
+    //                | statement ;
+    //
+    // statement      → exprStmt
+    //                | printStmt ;
+    public func parse() throws(ParseError) -> Stmt? {
+        if try isAtEnd() {
+            return nil
+        }
+
+        do {
+            return try parsseDecl()
+        } catch {
+            print("[line \(error.line)] \(error.message)")
+            try sync()
+            return try parse()
+        }
+    }
+
+    private func parsseDecl() throws(ParseError) -> Stmt {
+        if let _ = try matches(.var) {
+            return try parseVarDecl();
+        }
+
+        return try parseStmt()
+    }
+
+    private func parseStmt() throws(ParseError) -> Stmt {
+        if let _ = try matches(.print) {
+            return try parsePrintStmt()
+        }
+
+        return try parseExprStmt()
+    }
+
     public func parseExpr() throws(ParseError) -> Expr {
         try parseEqualityExpr()
+    }
+
+    private func parseVarDecl() throws(ParseError) -> Stmt {
+        let name = try consume(.identifier, errorMessage: "Expect variable name.")
+
+        let initializer: Expr? = if let _ = try matches(.equal) {
+            try parseExpr()
+        } else {
+            nil
+        }
+
+        try consume(.semicolon, errorMessage: "Expect ';' after variable declaration.")
+        return .var(name: name, initializer: initializer, loc: Location(line: scanner.line))
+    }
+
+    private func parseExprStmt() throws(ParseError) -> Stmt {
+        let expr = try parseExpr()
+        try consume(.semicolon, errorMessage: "Expect ';' after expression.")
+        return .expr(expr: expr, loc: Location(line: scanner.line))
+    }
+
+    private func parsePrintStmt() throws(ParseError) -> Stmt {
+        let expr = try parseExpr()
+        try consume(.semicolon, errorMessage: "Expect ';' after value.")
+        return .print(expr: expr, loc: Location(line: scanner.line))
     }
 
     private func parseEqualityExpr() throws(ParseError) -> Expr {
@@ -59,7 +94,7 @@ public class Parser {
 
         while let op = try matches(.bangEqual, .equalEqual) {
             let right = try parseComparisonExpr()
-            expr = .binary(left: expr, op: op, right: right, line: scanner.line)
+            expr = .binary(left: expr, op: op, right: right)
         }
 
         return expr
@@ -70,7 +105,7 @@ public class Parser {
 
         while let op = try matches(.greater, .greaterEqual, .less, .lessEqual) {
             let right = try parseTermExpr()
-            expr = .binary(left: expr, op: op, right: right, line: scanner.line)
+            expr = .binary(left: expr, op: op, right: right)
         }
 
         return expr
@@ -81,7 +116,7 @@ public class Parser {
 
         while let op = try matches(.plus, .minus) {
             let right = try parseFactorExpr()
-            expr = .binary(left: expr, op: op, right: right, line: scanner.line)
+            expr = .binary(left: expr, op: op, right: right)
         }
 
         return expr
@@ -92,7 +127,7 @@ public class Parser {
 
         while let op = try matches(.star, .slash) {
             let right = try parseUnaryExpr()
-            expr = .binary(left: expr, op: op, right: right, line: scanner.line)
+            expr = .binary(left: expr, op: op, right: right)
         }
 
         return expr
@@ -101,34 +136,38 @@ public class Parser {
     private func parseUnaryExpr() throws(ParseError) -> Expr {
         if let op = try matches(.bang, .minus) {
             let right = try parseUnaryExpr()
-            return .unary(op: op, right: right, line: scanner.line)
+            return .unary(op: op, right: right)
         }
 
         return try parsePrimaryExpr()
     }
 
     private func parsePrimaryExpr() throws(ParseError) -> Expr {
-        if (try matches(.false)) != nil { return .literal(.bool(false), line: scanner.line) }
-        if (try matches(.true)) != nil { return .literal(.bool(true), line: scanner.line) }
-        if (try matches(.nil)) != nil { return .literal(.nil, line: scanner.line) }
+        if (try matches(.false)) != nil { return .literal(.bool(false)) }
+        if (try matches(.true)) != nil { return .literal(.bool(true)) }
+        if (try matches(.nil)) != nil { return .literal(.nil) }
 
         if let token = try matches(.number, .string) {
-            return .literal(token.literal, line: scanner.line)
+            return .literal(token.literal)
+        }
+
+        if let token = try matches(.identifier) {
+            return .var(name: token)
         }
 
         if (try matches(.leftParen)) != nil {
             let expr = try parseExpr()
             try consume(.rightParen, errorMessage: "Expect ')' after expression.")
-            return .grouping(expr, line: scanner.line)
+            return .grouping(expr)
         }
 
         throw ParseError("Expect expression.", at: scanner.line)
     }
 
-    private func consume(_ tokenKind: TokenKind, errorMessage: String) throws(ParseError) {
+    @discardableResult
+    private func consume(_ tokenKind: TokenKind, errorMessage: String) throws(ParseError) -> Token {
         if try check(tokenKind) {
-            _ = try advance()
-            return
+            return try advance()
         }
 
         throw ParseError(errorMessage, at: scanner.line)
@@ -156,8 +195,7 @@ public class Parser {
         // no tokens in the buffer, try to scan next token
         do {
             if let token = try scanner.scanNextToken(), token.kind != .eof {
-                precondition(
-                    tokenBuffer.isEmpty, "tokenBuffer should be empty before appending new token")
+                precondition(tokenBuffer.isEmpty, "tokenBuffer should be empty before appending new token")
                 tokenBuffer.append(token)
                 return false
             }
@@ -182,7 +220,7 @@ public class Parser {
             return nil
         }
 
-        precondition(!tokenBuffer.isEmpty, "tokenBuffer should not be empty when advancing")
+        precondition(!tokenBuffer.isEmpty, "tokenBuffer should not be empty when peeking")
         return tokenBuffer.first
     }
 
