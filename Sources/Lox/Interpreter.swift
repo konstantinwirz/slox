@@ -15,9 +15,11 @@ public struct InterpretError: Error, CustomStringConvertible {
 public class Interpreter {
 
     private let parser: Parser
+    private let env: Env
 
     public init(source: String) {
         self.parser = Parser(source: source)
+        self.env = Env()
     }
 
     public func eval() throws -> LoxValue {
@@ -36,8 +38,14 @@ public class Interpreter {
             print(try evalExpr(expr))
         case .expr(let expr, _):
             try _ = evalExpr(expr)  // side-effect
-        default:
-            break
+        case .var(name: let token, let initializer, _):
+            let value: LoxValue =
+                if initializer != nil {
+                    try evalExpr(initializer!)
+                } else {
+                    .nil
+                }
+            env.define(name: String(token.lexeme), value: value)
         }
     }
 
@@ -46,9 +54,16 @@ public class Interpreter {
         case .literal(let value): value
         case .grouping(let expr): try evalExpr(expr)
         case .unary(let op, let right): try evalUnaryExpr(op: op, expr: right)
-        case .binary(let left, let op, let right):
-            try evalBinaryExpr(left: left, op: op, right: right)
-        default: .nil
+        case .binary(let left, let op, let right): try evalBinaryExpr(left: left, op: op, right: right)
+        case .var(let name): try lookupVar(name)
+        }
+    }
+
+    private func lookupVar(_ name: Token) throws(InterpretError) -> LoxValue {
+        do {
+            return try env[String(name.lexeme)]
+        } catch {
+            throw InterpretError(error.description, at: name.line)
         }
     }
 
