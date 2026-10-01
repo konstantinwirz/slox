@@ -56,12 +56,22 @@ public class Interpreter {
         case .unary(let op, let right): try evalUnaryExpr(op: op, expr: right)
         case .binary(let left, let op, let right): try evalBinaryExpr(left: left, op: op, right: right)
         case .var(let name): try lookupVar(name)
+        case .assign(let name, let value): try assignVar(name: name, value: try evalExpr(value))
         }
     }
 
     private func lookupVar(_ name: Token) throws(InterpretError) -> LoxValue {
         do {
             return try env[String(name.lexeme)]
+        } catch {
+            throw InterpretError(error.description, at: name.line)
+        }
+    }
+
+    private func assignVar(name: Token, value: LoxValue) throws(InterpretError) -> LoxValue {
+        do {
+            try env.assign(name: String(name.lexeme), value: value)
+            return value
         } catch {
             throw InterpretError(error.description, at: name.line)
         }

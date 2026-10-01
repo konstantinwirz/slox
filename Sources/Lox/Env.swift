@@ -18,6 +18,15 @@ public class Env {
         values[name] = value
     }
 
+    public func assign(name: String, value: LoxValue) throws(UndefinedVariableError) {
+        if values[name] != nil {
+            values[name] = value
+            return
+        }
+
+        throw UndefinedVariableError(name)
+    }
+
     subscript(name: String) -> LoxValue {
         get throws(UndefinedVariableError) {
             guard let value = values[name] else {

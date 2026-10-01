@@ -61,7 +61,22 @@ public class Parser {
     }
 
     public func parseExpr() throws(ParseError) -> Expr {
-        try parseEqualityExpr()
+        try parseAssignment()
+    }
+
+    private func parseAssignment() throws(ParseError) -> Expr {
+        let expr = try parseEqualityExpr()
+
+        if let equals = try matches(.equal) {
+            let value = try parseAssignment()
+            if case Expr.var(let name) = expr {
+                return .assign(name: name, value: value)
+            }
+
+            throw ParseError("Invalid assignment target.", at: equals.line)
+        }
+
+        return expr
     }
 
     private func parseVarDecl() throws(ParseError) -> Stmt {

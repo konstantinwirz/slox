@@ -22,6 +22,7 @@ public enum Expr: CustomStringConvertible {
     indirect case unary(op: Token, right: Expr)
     case `var`(name: Token)
     indirect case binary(left: Expr, op: Token, right: Expr)
+    indirect case assign(name: Token, value: Expr)
 
     public var description: String {
         switch self {
@@ -35,6 +36,8 @@ public enum Expr: CustomStringConvertible {
             return "(\(op.lexeme) \(left) \(right))"
         case .var(let name):
             return "var \(name)"
+        case .assign(let name, let value):
+            return "\(name.lexeme) = \(value)"
         }
     }
 }
