@@ -19,7 +19,7 @@ test-chap07-evaluating: build
 	$(call run-tests,chap07_evaluating,eval)
 
 test-chap08-statements: build
-	$(call run-tests,chap08_statements,eval)
+	$(call run-tests,chap08_statements,run)
 
 test-chap09-control: build
 	$(call run-tests,chap09_control,eval)
@@ -40,7 +40,7 @@ test-jlox: build
 	$(call run-tests,jlox,eval)
 
 # Only chapters that currently pass; add more as they're implemented.
-test-all: test-chap04-scanning test-chap06-parsing test-chap07-evaluating
+test-all: test-chap04-scanning test-chap06-parsing test-chap07-evaluating test-chap08-statements
 
 .PHONY: build test-all test-jlox test-chap04-scanning test-chap06-parsing test-chap07-evaluating \
 	test-chap08-statements test-chap09-control test-chap10-functions test-chap11-resolving \

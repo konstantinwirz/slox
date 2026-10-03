@@ -1,18 +1,3 @@
-public struct ScanError: Error, CustomStringConvertible {
-    public let message: String
-    public let line: Int
-
-    public init(_ message: String, at line: Int) {
-        self.message = message
-        self.line = line
-    }
-
-    public var description: String {
-        return "[line \(line)] \(message)"
-    }
-
-}
-
 public class Scanner {
 
     public let source: String
@@ -28,7 +13,7 @@ public class Scanner {
         self.line = 1
     }
 
-    public func scanNextToken() throws(ScanError) -> Token? {
+    public func scanNextToken() throws(LoxError) -> Token? {
         guard !sourceExhausted else {
             return nil
         }
@@ -79,11 +64,11 @@ public class Scanner {
         case "a"..."z", "A"..."Z", "_":
             return try scanIdentifier()
         default:
-            throw ScanError("Unexpected character: \(ch)", at: line)
+            throw .scanError(message: "Unexpected character: \(ch)", line: line)
         }
     }
 
-    private func scanIdentifier() throws(ScanError) -> Token {
+    private func scanIdentifier() throws(LoxError) -> Token {
         while let ch = peek(), ch.isNumber || ch.isLetter || ch == "_" {
             _ = try advance()
         }
@@ -112,7 +97,7 @@ public class Scanner {
         return newToken(kind: kind)
     }
 
-    private func scanNumber() throws(ScanError) -> Token {
+    private func scanNumber() throws(LoxError) -> Token {
         while let ch = peek(), ch.isNumber {
             _ = try advance()
         }
@@ -133,17 +118,20 @@ public class Scanner {
             return Token(kind: .number, lexeme: lexeme, literal: .number(n), line: line)
         }
 
-        throw ScanError("Invalid number: \(lexeme)", at: line)
+        throw .scanError(message: "Invalid number: \(lexeme)", line: line)
     }
 
-    private func scanString() throws(ScanError) -> Token {
+    private func scanString() throws(LoxError) -> Token {
         while let ch = peek(), ch != "\"" {
+            if ch.isNewline {
+                line += 1
+            }
             _ = try advance()
         }
 
         // we expect closing double quote
         if peek() != "\"" {
-            throw ScanError("Unterminated string.", at: line)
+            throw .scanError(message: "Unterminated string.", line: line)
         }
 
         _ = try advance()  // consume closing double quote
@@ -156,7 +144,7 @@ public class Scanner {
         )
     }
 
-    private func matches(_ expected: Character) throws(ScanError) -> Bool {
+    private func matches(_ expected: Character) throws(LoxError) -> Bool {
         if isAtEnd() {
             return false
         }
@@ -169,7 +157,7 @@ public class Scanner {
         return false
     }
 
-    private func skipWhitespaces() throws(ScanError) {
+    private func skipWhitespaces() throws(LoxError) {
         while let ch = peek(), ch.isWhitespace {
             _ = try advance()
             if ch.isNewline {
@@ -187,9 +175,9 @@ public class Scanner {
         return currentIndex >= source.endIndex
     }
 
-    private func advance() throws(ScanError) -> Character {
+    private func advance() throws(LoxError) -> Character {
         guard !isAtEnd() else {
-            throw ScanError("Unexpected end of input", at: line)
+            throw .scanError(message: "Unexpected end of input", line: line)
         }
 
         let ch = source[currentIndex]

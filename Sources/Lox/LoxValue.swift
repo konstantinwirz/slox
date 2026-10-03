@@ -15,3 +15,16 @@ extension LoxValue: CustomStringConvertible {
         }
     }
 }
+
+
+extension LoxValue: Equatable {
+    public static func == (lhs: LoxValue, rhs: LoxValue) -> Bool {
+        switch (lhs, rhs) {
+        case (.nil, .nil): return true
+        case (.string(let a), .string(let b)): return a == b
+        case (.number(let a), .number(let b)): return a == b
+        case (.bool(let a), .bool(let b)): return a == b
+        default: return false
+        }
+    }
+}

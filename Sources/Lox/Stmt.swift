@@ -6,12 +6,14 @@ public enum Stmt {
     case expr(expr: Expr, loc: Location)
     case print(expr: Expr, loc: Location)
     case `var`(name: Token, initializer: Expr?, loc: Location)
+    case block([Stmt], loc: Location)
 
     public var location: Location {
         switch self {
         case .expr(_, let loc): loc
         case .print(_, let loc): loc
         case .var(_, _, let loc): loc
+        case .block(_, let loc): loc
         }
     }
 }

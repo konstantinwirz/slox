@@ -1,21 +1,9 @@
-public struct InterpretError: Error, CustomStringConvertible {
-    public let line: Int
-    public let message: String
-
-    public init(_ message: String, at line: Int) {
-        self.line = line
-        self.message = message
-    }
-
-    public var description: String {
-        "[line \(line)] \(message)"
-    }
-}
+import Foundation
 
 public class Interpreter {
 
     private let parser: Parser
-    private let env: Env
+    private var env: Env
 
     public init(source: String) {
         self.parser = Parser(source: source)
@@ -26,16 +14,16 @@ public class Interpreter {
         try evalExpr(parser.parseExpr())
     }
 
-    public func run() throws {
+    public func run() throws(LoxError) {
         while let stmt = try parser.parse() {
             try execute(stmt)
         }
     }
 
-    private func execute(_ stmt: Stmt) throws(InterpretError) {
+    private func execute(_ stmt: Stmt) throws(LoxError) {
         switch stmt {
         case .print(let expr, _):
-            print(try evalExpr(expr))
+            printLoxValue(try evalExpr(expr))
         case .expr(let expr, _):
             try _ = evalExpr(expr)  // side-effect
         case .var(name: let token, let initializer, _):
@@ -46,38 +34,68 @@ public class Interpreter {
                     .nil
                 }
             env.define(name: String(token.lexeme), value: value)
+        case .block(let stmts, _):
+            try execBlock(stmts: stmts, env: Env(enclosing: self.env))
         }
     }
 
-    private func evalExpr(_ expr: Expr) throws(InterpretError) -> LoxValue {
+    private func printLoxValue(_ value: LoxValue) {
+        switch value {
+        case .nil: print("nil")
+        case .number(let n):
+            let s = String(n)
+            if s.hasSuffix(".0") {
+                print(s.dropLast(2))
+            } else {
+                print(s)
+            }
+        default: print(value)
+        }
+    }
+
+    private func evalExpr(_ expr: Expr) throws(LoxError) -> LoxValue {
         switch expr {
         case .literal(let value): value
         case .grouping(let expr): try evalExpr(expr)
         case .unary(let op, let right): try evalUnaryExpr(op: op, expr: right)
-        case .binary(let left, let op, let right): try evalBinaryExpr(left: left, op: op, right: right)
+        case .binary(let left, let op, let right):
+            try evalBinaryExpr(left: left, op: op, right: right)
         case .var(let name): try lookupVar(name)
         case .assign(let name, let value): try assignVar(name: name, value: try evalExpr(value))
         }
     }
 
-    private func lookupVar(_ name: Token) throws(InterpretError) -> LoxValue {
-        do {
-            return try env[String(name.lexeme)]
-        } catch {
-            throw InterpretError(error.description, at: name.line)
+    private func execBlock(stmts: [Stmt], env: Env) throws(LoxError) {
+        let previous = self.env
+
+        self.env = env
+        defer {
+            self.env = previous
+        }
+
+        for stmt in stmts {
+            try execute(stmt)
         }
     }
 
-    private func assignVar(name: Token, value: LoxValue) throws(InterpretError) -> LoxValue {
+    private func lookupVar(_ name: Token) throws(LoxError) -> LoxValue {
+        do {
+            return try env[String(name.lexeme)]
+        } catch {
+            throw .runtimeError(message: error.description, line: name.line)
+        }
+    }
+
+    private func assignVar(name: Token, value: LoxValue) throws(LoxError) -> LoxValue {
         do {
             try env.assign(name: String(name.lexeme), value: value)
             return value
         } catch {
-            throw InterpretError(error.description, at: name.line)
+            throw .runtimeError(message: error.description, line: name.line)
         }
     }
 
-    private func evalUnaryExpr(op: Token, expr: Expr) throws(InterpretError) -> LoxValue {
+    private func evalUnaryExpr(op: Token, expr: Expr) throws(LoxError) -> LoxValue {
         let value = try evalExpr(expr)
 
         return switch op.kind {
@@ -86,7 +104,7 @@ public class Interpreter {
         case .bang:
             .bool(!isTruthy(value))
         default:
-            throw InterpretError("invalid unary expression", at: op.line)
+            throw .runtimeError(message: "invalid unary expression", line: op.line)
         }
     }
 
@@ -94,7 +112,7 @@ public class Interpreter {
         left: Expr,
         op: Token,
         right: Expr
-    ) throws(InterpretError) -> LoxValue {
+    ) throws(LoxError) -> LoxValue {
         let leftValue = try evalExpr(left)
         let rightValue = try evalExpr(right)
 
@@ -106,7 +124,7 @@ public class Interpreter {
             } else if case .string(let l) = leftValue, case .string(let r) = rightValue {
                 .string("\(l)\(r)")
             } else {
-                throw InterpretError("Operands must be two numbers or two strings.", at: op.line)
+                throw .runtimeError(message: "Operands must be two numbers or two strings.", line: op.line)
             }
         case .slash: try .number(expectNumber(leftValue) / expectNumber(rightValue))
         case .star: try .number(expectNumber(leftValue) * expectNumber(rightValue))
@@ -118,14 +136,18 @@ public class Interpreter {
             try .bool(expectNumber(leftValue) < expectNumber(rightValue))
         case .lessEqual:
             try .bool(expectNumber(leftValue) <= expectNumber(rightValue))
+        case .equalEqual:
+            .bool(leftValue == rightValue)
+        case .bangEqual:
+            .bool(leftValue != rightValue)
         default:
             fatalError("\(op.kind) on numbers is not supported")
         }
     }
 
-    private func expectNumber(_ value: LoxValue) throws(InterpretError) -> Double {
+    private func expectNumber(_ value: LoxValue) throws(LoxError) -> Double {
         guard case .number(let value) = value else {
-            throw InterpretError("Operand '\(value)' must be a number.", at: -1)
+            throw .runtimeError(message: "Operand '\(value)' must be a number.", line: -1)
         }
 
         return value

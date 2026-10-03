@@ -13,6 +13,15 @@ public struct UndefinedVariableError : Error, CustomStringConvertible {
 
 public class Env {
     private var values: [String: LoxValue] = [:]
+    private weak let enclosing: Env?
+
+    init() {
+        enclosing = nil
+    }
+
+    init(enclosing env: Env) {
+        enclosing = env
+    }
 
     public func define(name: String, value: LoxValue) {
         values[name] = value
@@ -29,10 +38,15 @@ public class Env {
 
     subscript(name: String) -> LoxValue {
         get throws(UndefinedVariableError) {
-            guard let value = values[name] else {
-                throw UndefinedVariableError(name)
+            if let value = values[name] {
+                return value
             }
-            return value
+
+            if let enclosing = enclosing {
+                    return try enclosing[name]
+            }
+
+            throw UndefinedVariableError(name)
         }
     }
 }

@@ -1,17 +1,4 @@
 
-public struct ParseError: Error, CustomStringConvertible {
-    public let message: String
-    public let line: Int
-
-    public init(_ message: String, at line: Int) {
-        self.message = message
-        self.line = line
-    }
-
-    public var description: String {
-        return "[line \(line)] \(message)"
-    }
-}
 
 public class Parser {
 
@@ -30,7 +17,7 @@ public class Parser {
     //
     // statement      → exprStmt
     //                | printStmt ;
-    public func parse() throws(ParseError) -> Stmt? {
+    public func parse() throws(LoxError) -> Stmt? {
         if try isAtEnd() {
             return nil
         }
@@ -38,13 +25,13 @@ public class Parser {
         do {
             return try parsseDecl()
         } catch {
-            print("[line \(error.line)] \(error.message)")
-            try sync()
-            return try parse()
+            throw error
+            //try sync()
+            //return try parse()
         }
     }
 
-    private func parsseDecl() throws(ParseError) -> Stmt {
+    private func parsseDecl() throws(LoxError) -> Stmt {
         if let _ = try matches(.var) {
             return try parseVarDecl();
         }
@@ -52,19 +39,33 @@ public class Parser {
         return try parseStmt()
     }
 
-    private func parseStmt() throws(ParseError) -> Stmt {
+    private func parseStmt() throws(LoxError) -> Stmt {
         if let _ = try matches(.print) {
             return try parsePrintStmt()
+        }
+
+        if let _ = try matches(.leftBrace) {
+            return try parseBlock()
         }
 
         return try parseExprStmt()
     }
 
-    public func parseExpr() throws(ParseError) -> Expr {
+    private func parseBlock() throws(LoxError) -> Stmt {
+        var stmts: [Stmt] = [] 
+        while try !check(.rightBrace), try !isAtEnd() {
+            stmts.append(try parsseDecl())
+        }
+
+        try consume(.rightBrace, errorMessage: "Expect '}' after block.")
+        return .block(stmts, loc: Location(line: scanner.line))
+    }
+
+    public func parseExpr() throws(LoxError) -> Expr {
         try parseAssignment()
     }
 
-    private func parseAssignment() throws(ParseError) -> Expr {
+    private func parseAssignment() throws(LoxError) -> Expr {
         let expr = try parseEqualityExpr()
 
         if let equals = try matches(.equal) {
@@ -73,13 +74,13 @@ public class Parser {
                 return .assign(name: name, value: value)
             }
 
-            throw ParseError("Invalid assignment target.", at: equals.line)
+            throw .parseError(message: "Error at '\(equals.lexeme)': Invalid assignment target.", line: equals.line)
         }
 
         return expr
     }
 
-    private func parseVarDecl() throws(ParseError) -> Stmt {
+    private func parseVarDecl() throws(LoxError) -> Stmt {
         let name = try consume(.identifier, errorMessage: "Expect variable name.")
 
         let initializer: Expr? = if let _ = try matches(.equal) {
@@ -92,19 +93,19 @@ public class Parser {
         return .var(name: name, initializer: initializer, loc: Location(line: scanner.line))
     }
 
-    private func parseExprStmt() throws(ParseError) -> Stmt {
+    private func parseExprStmt() throws(LoxError) -> Stmt {
         let expr = try parseExpr()
         try consume(.semicolon, errorMessage: "Expect ';' after expression.")
         return .expr(expr: expr, loc: Location(line: scanner.line))
     }
 
-    private func parsePrintStmt() throws(ParseError) -> Stmt {
+    private func parsePrintStmt() throws(LoxError) -> Stmt {
         let expr = try parseExpr()
         try consume(.semicolon, errorMessage: "Expect ';' after value.")
         return .print(expr: expr, loc: Location(line: scanner.line))
     }
 
-    private func parseEqualityExpr() throws(ParseError) -> Expr {
+    private func parseEqualityExpr() throws(LoxError) -> Expr {
         var expr = try parseComparisonExpr()
 
         while let op = try matches(.bangEqual, .equalEqual) {
@@ -115,7 +116,7 @@ public class Parser {
         return expr
     }
 
-    private func parseComparisonExpr() throws(ParseError) -> Expr {
+    private func parseComparisonExpr() throws(LoxError) -> Expr {
         var expr = try parseTermExpr()
 
         while let op = try matches(.greater, .greaterEqual, .less, .lessEqual) {
@@ -126,7 +127,7 @@ public class Parser {
         return expr
     }
 
-    private func parseTermExpr() throws(ParseError) -> Expr {
+    private func parseTermExpr() throws(LoxError) -> Expr {
         var expr = try parseFactorExpr()
 
         while let op = try matches(.plus, .minus) {
@@ -137,7 +138,7 @@ public class Parser {
         return expr
     }
 
-    private func parseFactorExpr() throws(ParseError) -> Expr {
+    private func parseFactorExpr() throws(LoxError) -> Expr {
         var expr = try parseUnaryExpr()
 
         while let op = try matches(.star, .slash) {
@@ -148,7 +149,7 @@ public class Parser {
         return expr
     }
 
-    private func parseUnaryExpr() throws(ParseError) -> Expr {
+    private func parseUnaryExpr() throws(LoxError) -> Expr {
         if let op = try matches(.bang, .minus) {
             let right = try parseUnaryExpr()
             return .unary(op: op, right: right)
@@ -157,7 +158,7 @@ public class Parser {
         return try parsePrimaryExpr()
     }
 
-    private func parsePrimaryExpr() throws(ParseError) -> Expr {
+    private func parsePrimaryExpr() throws(LoxError) -> Expr {
         if (try matches(.false)) != nil { return .literal(.bool(false)) }
         if (try matches(.true)) != nil { return .literal(.bool(true)) }
         if (try matches(.nil)) != nil { return .literal(.nil) }
@@ -176,19 +177,20 @@ public class Parser {
             return .grouping(expr)
         }
 
-        throw ParseError("Expect expression.", at: scanner.line)
+        throw .parseError(message: "Error at '\(try peek()?.lexeme ?? "")': Expect expression.", line: scanner.line)
     }
 
     @discardableResult
-    private func consume(_ tokenKind: TokenKind, errorMessage: String) throws(ParseError) -> Token {
+    private func consume(_ tokenKind: TokenKind, errorMessage: String) throws(LoxError) -> Token {
         if try check(tokenKind) {
             return try advance()
         }
 
-        throw ParseError(errorMessage, at: scanner.line)
+        let lexeme = try peek()?.lexeme ?? ""
+        throw .parseError(message: "Error at '\(lexeme)': \(errorMessage)", line: scanner.line)
     }
 
-    private func matches(_ tokenKinds: TokenKind...) throws(ParseError) -> Token? {
+    private func matches(_ tokenKinds: TokenKind...) throws(LoxError) -> Token? {
         for kind in tokenKinds {
             if try check(kind) {
                 return try advance()
@@ -198,11 +200,11 @@ public class Parser {
         return nil
     }
 
-    private func check(_ tokenKind: TokenKind) throws(ParseError) -> Bool {
+    private func check(_ tokenKind: TokenKind) throws(LoxError) -> Bool {
         try peek()?.kind == tokenKind
     }
 
-    private func isAtEnd() throws(ParseError) -> Bool {
+    private func isAtEnd() throws(LoxError) -> Bool {
         if !tokenBuffer.isEmpty {
             return false
         }
@@ -215,22 +217,22 @@ public class Parser {
                 return false
             }
         } catch {
-            throw ParseError(error.message, at: error.line)
+            throw .parseError(message: error.message, line: error.line)
         }
 
         return true
     }
 
-    private func advance() throws(ParseError) -> Token {
+    private func advance() throws(LoxError) -> Token {
         if try isAtEnd() {
-            throw ParseError("Unexpected end of input", at: scanner.line)
+            throw .parseError(message: "Unexpected end of input", line: scanner.line)
         }
 
         precondition(!tokenBuffer.isEmpty, "tokenBuffer should not be empty when advancing")
         return tokenBuffer.removeFirst()
     }
 
-    private func peek() throws(ParseError) -> Token? {
+    private func peek() throws(LoxError) -> Token? {
         if try isAtEnd() {
             return nil
         }
@@ -239,7 +241,7 @@ public class Parser {
         return tokenBuffer.first
     }
 
-    private func sync() throws(ParseError) {
+    private func sync() throws(LoxError) {
         while !(try isAtEnd()) {
             let token = try advance()
             if token.kind == .semicolon {

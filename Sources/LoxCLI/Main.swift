@@ -37,7 +37,17 @@ struct SLox: ParsableCommand {
             print(result)
         case .run:
             let interpreter = Interpreter(source: fileContent)
-            try interpreter.run()
+            do {
+                try interpreter.run()
+            } catch {
+                FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
+                switch error {
+                case .scanError, .parseError:
+                    throw ExitCode(65)
+                case .runtimeError:
+                    throw ExitCode(70)
+                }
+            }
         }
     }
 
