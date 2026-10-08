@@ -41,7 +41,7 @@ struct SLox: ParsableCommand {
                 try interpreter.run()
             } catch {
                 FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
-                switch error {
+                switch error.kind {
                 case .scanError, .parseError:
                     throw ExitCode(65)
                 case .runtimeError:

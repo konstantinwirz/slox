@@ -1,28 +1,41 @@
-public enum LoxError: Error, CustomStringConvertible {
-    case scanError(message: String, line: Int)
-    case parseError(message: String, line: Int)
-    case runtimeError(message: String, line: Int)
+public enum LoxErrorKind: Int, Sendable {
+    case scanError
+    case parseError
+    case runtimeError
+}
 
-    var line: Int {
-        switch self {
-        case .scanError(_, let line): return line
-        case .parseError(_, let line): return line
-        case .runtimeError(_, let line): return line
-        }
+
+public struct LoxError : Error, CustomStringConvertible {
+    public let kind: LoxErrorKind 
+    public let line: Int
+    public let message: String
+    let hint: String?
+
+    private init(kind: LoxErrorKind, message: String, line: Int, hint: String? = nil) {
+        self.kind = kind
+        self.message = message
+        self.line = line
+        self.hint = hint
     }
 
-    var message: String {
-        switch self {
-        case .scanError(let message, _): return message
-        case .parseError(let message, _): return message
-        case .runtimeError(let message, _): return message
-        }
+    public static func scanError(message: String, line: Int, hint: String? = nil) -> LoxError {
+        return LoxError(kind: .scanError, message: message, line: line, hint: hint)
+    }
+
+    public static func parseError(message: String, line: Int, hint: String? = nil) -> LoxError {
+        return LoxError(kind: .parseError, message: message, line: line, hint: hint)
+    }
+
+    public static func runtimeError(message: String, line: Int, hint: String? = nil) -> LoxError {
+        return LoxError(kind: .runtimeError, message: message, line: line, hint: hint)
     }
 
     public var description: String {
-        switch self {
-        case .runtimeError(let message, let line): "\(message)\n[line \(line)]"
-        default: "[line \(line)] \(message)"
+        switch kind {
+        case .runtimeError:
+            "\(message)\n[line \(line)]"
+        default:
+            "[line \(line)] Error\(hint ?? ""): \(message)"
         }
     }
 

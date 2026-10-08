@@ -74,7 +74,7 @@ public class Parser {
                 return .assign(name: name, value: value)
             }
 
-            throw .parseError(message: "Error at '\(equals.lexeme)': Invalid assignment target.", line: equals.line)
+            throw .parseError(message: "Invalid assignment target.", line: equals.line, hint: " at '\(equals.lexeme)'")
         }
 
         return expr
@@ -177,7 +177,7 @@ public class Parser {
             return .grouping(expr)
         }
 
-        throw .parseError(message: "Error at '\(try peek()?.lexeme ?? "")': Expect expression.", line: scanner.line)
+        throw .parseError(message: "Expect expression.", line: scanner.line, hint: " at '\(try peek()?.lexeme ?? "")'")
     }
 
     @discardableResult
@@ -187,7 +187,7 @@ public class Parser {
         }
 
         let lexeme = try peek()?.lexeme ?? ""
-        throw .parseError(message: "Error at '\(lexeme)': \(errorMessage)", line: scanner.line)
+        throw .parseError(message: "\(errorMessage)", line: scanner.line, hint: " at '\(lexeme)'")
     }
 
     private func matches(_ tokenKinds: TokenKind...) throws(LoxError) -> Token? {
